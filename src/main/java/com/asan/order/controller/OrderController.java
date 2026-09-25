@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.asan.order.entity.Order;
 import com.asan.order.service.OrderService;
+import com.asan.order.vo.ResponseTemplate;
 
 @RestController
 @RequestMapping("/api/order")
@@ -27,12 +28,9 @@ public class OrderController {
   }
 
   @GetMapping("/{id}")
-  public ResponseEntity<Order> getOrderById(@PathVariable("id") Long id) {
-    Order order = orderService.getOrderById(id);
-    if (order != null) {
-      return ResponseEntity.ok(order);
-    }
-    return ResponseEntity.notFound().build();
+  public ResponseEntity<List<ResponseTemplate>> getOrderEntityById(@PathVariable("id") Long id) {
+    List<ResponseTemplate> responseList = orderService.getOrderWithProdukById(id);
+    return ResponseEntity.ok(responseList);
   }
 
   @PostMapping
