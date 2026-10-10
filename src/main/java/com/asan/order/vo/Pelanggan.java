@@ -2,15 +2,17 @@ package com.asan.order.vo;
 public class Pelanggan {
   private Long id;
   private String nama;
+  private String email;
   private String alamat;
   private String jenisKelamin;
 
   public Pelanggan() {
   }
 
-  public Pelanggan(Long id, String nama, String alamat, String jenisKelamin) {
+  public Pelanggan(Long id, String nama, String email, String alamat, String jenisKelamin) {
     this.id = id;
     this.nama = nama;
+    this.email = email;
     this.alamat = alamat;
     this.jenisKelamin = jenisKelamin;
   }
@@ -29,6 +31,14 @@ public class Pelanggan {
 
   public void setNama(String nama) {
     this.nama = nama;
+  }
+
+  public String getEmail() {
+    return email;
+  }
+
+  public void setEmail(String email) {
+    this.email = email;
   }
 
   public String getAlamat() {

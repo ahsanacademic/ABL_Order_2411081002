@@ -14,6 +14,7 @@ import com.asan.order.entity.Order;
 import com.asan.order.repository.OrderRepository;
 import com.asan.order.vo.Pelanggan;
 import com.asan.order.vo.Produk;
+import com.asan.order.vo.OrderMessage;
 import com.asan.order.vo.ResponseTemplate;
 
 @Service
@@ -21,6 +22,9 @@ public class OrderService {
 
   @Autowired
   private OrderRepository orderRepository;
+
+  @Autowired
+  private OrderMessagePublisher orderMessagePublisher;
 
   @Autowired
   private DiscoveryClient discoveryClient;
@@ -39,7 +43,15 @@ public class OrderService {
     if (order.getTglTransaksi() == null) {
       order.setTglTransaksi(LocalDate.now());
     }
-    return orderRepository.save(order);
+    Order savedOrder = orderRepository.save(order);
+    Pelanggan pelanggan = getPelangganById(savedOrder.getPelangganId());
+    orderMessagePublisher.publishOrder(new OrderMessage(savedOrder, pelanggan.getEmail()));
+    return savedOrder;
+  }
+
+  private Pelanggan getPelangganById(Long pelangganId) {
+    ServiceInstance serviceInstancePelanggan = discoveryClient.getInstances("PELANGGAN").get(0);
+    return restTemplate.getForObject(serviceInstancePelanggan.getUri() + "/api/pelanggan/" + pelangganId, Pelanggan.class);
   }
 
   public List<ResponseTemplate> getOrderWithProdukById(Long idPelanggan) {
