@@ -21,7 +21,7 @@ public class OrderMessagePublisher {
   public void publishOrder(OrderMessage orderMessage) {
     try {
       String message = objectMapper.writeValueAsString(orderMessage);
-      rabbitTemplate.convertAndSend(RabbitMQConfig.ORDER_QUEUE_NAME, message);
+      rabbitTemplate.convertAndSend(RabbitMQConfig.ORDER_EXCHANGE_NAME, "", message);
       System.out.println("Order sent to queue: " + message);
     } catch (JsonProcessingException e) {
       throw new RuntimeException("Failed to publish order message", e);
