@@ -1,6 +1,5 @@
 package com.asan.order.service;
 
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -14,17 +13,13 @@ import com.asan.order.entity.Order;
 import com.asan.order.repository.OrderRepository;
 import com.asan.order.vo.Pelanggan;
 import com.asan.order.vo.Produk;
-import com.asan.order.vo.OrderMessage;
 import com.asan.order.vo.ResponseTemplate;
 
 @Service
-public class OrderService {
+public class OrderQueryService {
 
   @Autowired
   private OrderRepository orderRepository;
-
-  @Autowired
-  private OrderMessagePublisher orderMessagePublisher;
 
   @Autowired
   private DiscoveryClient discoveryClient;
@@ -39,31 +34,19 @@ public class OrderService {
     return orderRepository.findById(id).orElse(null);
   }
 
-  public Order saveOrder(Order order) {
-    if (order.getTglTransaksi() == null) {
-      order.setTglTransaksi(LocalDate.now());
-    }
-    Order savedOrder = orderRepository.save(order);
-    Pelanggan pelanggan = getPelangganById(savedOrder.getPelangganId());
-    orderMessagePublisher.publishOrder(new OrderMessage(savedOrder, pelanggan.getEmail()));
-    return savedOrder;
-  }
-
-  private Pelanggan getPelangganById(Long pelangganId) {
-    ServiceInstance serviceInstancePelanggan = discoveryClient.getInstances("PELANGGAN").get(0);
-    return restTemplate.getForObject(serviceInstancePelanggan.getUri() + "/api/pelanggan/" + pelangganId, Pelanggan.class);
-  }
-
-  public List<ResponseTemplate> getOrderWithProdukById(Long idPelanggan) {
+  public List<ResponseTemplate> getOrderWithProdukById(Long orderId) {
     List<ResponseTemplate> responseList = new ArrayList<>();
-    Order order = getOrderById(idPelanggan);
+    Order order = getOrderById(orderId);
+    if (order == null) {
+      return responseList;
+    }
 
     ServiceInstance serviceInstanceProduk = discoveryClient.getInstances("PRODUK").get(0);
     ServiceInstance serviceInstancePelanggan = discoveryClient.getInstances("PELANGGAN").get(0);
 
     Produk produk = restTemplate.getForObject(serviceInstanceProduk.getUri() + "/api/produk/" + order.getProdukId(), Produk.class);
     Pelanggan pelanggan = restTemplate.getForObject(serviceInstancePelanggan.getUri() + "/api/pelanggan/" + order.getPelangganId(), Pelanggan.class);
-    
+
     ResponseTemplate vo = new ResponseTemplate();
     vo.setOrder(order);
     vo.setProduk(produk);
