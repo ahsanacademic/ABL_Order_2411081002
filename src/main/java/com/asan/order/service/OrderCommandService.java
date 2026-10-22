@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.asan.order.client.PelangganClient;
+import com.asan.order.client.ProdukClient;
 import com.asan.order.entity.Order;
 import com.asan.order.repository.OrderRepository;
 import com.asan.order.vo.OrderMessage;
@@ -23,6 +24,9 @@ public class OrderCommandService {
   @Autowired
   private PelangganClient pelangganClient;
 
+  @Autowired
+  private ProdukClient produkClient;
+
   public Order createOrder(Order order, Long authUserId) {
     Pelanggan pelanggan = pelangganClient.findByAuthUserId(authUserId);
     order.setId(null);
@@ -31,7 +35,7 @@ public class OrderCommandService {
       order.setTglTransaksi(LocalDate.now());
     }
     Order savedOrder = orderRepository.save(order);
-    publishOrder(savedOrder);
+    publishOrder(savedOrder, OrderMessage.ORDER_CREATED);
     return savedOrder;
   }
 
@@ -48,7 +52,7 @@ public class OrderCommandService {
       existingOrder.setTglTransaksi(order.getTglTransaksi());
     }
     Order savedOrder = orderRepository.save(existingOrder);
-    publishOrder(savedOrder);
+    publishOrder(savedOrder, OrderMessage.ORDER_UPDATED);
     return savedOrder;
   }
 
@@ -58,12 +62,19 @@ public class OrderCommandService {
     if (existingOrder == null) {
       return false;
     }
+    OrderMessage deleteEvent = createOrderMessage(existingOrder, OrderMessage.ORDER_DELETED);
     orderRepository.delete(existingOrder);
+    orderMessagePublisher.publishOrder(deleteEvent);
     return true;
   }
 
-  private void publishOrder(Order savedOrder) {
-    Pelanggan pelanggan = pelangganClient.findById(savedOrder.getPelangganId());
-    orderMessagePublisher.publishOrder(new OrderMessage(savedOrder, pelanggan.getEmail()));
+  private void publishOrder(Order savedOrder, String eventType) {
+    orderMessagePublisher.publishOrder(createOrderMessage(savedOrder, eventType));
+  }
+
+  private OrderMessage createOrderMessage(Order order, String eventType) {
+    var produk = produkClient.findById(order.getProdukId());
+    Pelanggan pelanggan = pelangganClient.findById(order.getPelangganId());
+    return new OrderMessage(order, eventType, produk, pelanggan);
   }
 }

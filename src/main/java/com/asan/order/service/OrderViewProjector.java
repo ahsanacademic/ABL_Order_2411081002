@@ -1,18 +1,12 @@
 package com.asan.order.service;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.cloud.client.ServiceInstance;
-import org.springframework.cloud.client.discovery.DiscoveryClient;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestTemplate;
 
+import com.asan.order.client.PelangganClient;
+import com.asan.order.client.ProdukClient;
 import com.asan.order.readmodel.OrderView;
 import com.asan.order.readmodel.OrderViewRepository;
-import com.asan.order.security.ServiceTokenProvider;
 import com.asan.order.vo.OrderMessage;
 import com.asan.order.vo.Pelanggan;
 import com.asan.order.vo.Produk;
@@ -20,20 +14,37 @@ import com.asan.order.vo.Produk;
 @Service
 public class OrderViewProjector {
 
-  @Autowired
-  private OrderViewRepository orderViewRepository;
+  private final OrderViewRepository orderViewRepository;
+  private final ProdukClient produkClient;
+  private final PelangganClient pelangganClient;
 
-  @Autowired
-  private DiscoveryClient discoveryClient;
-
-  @Autowired
-  private ServiceTokenProvider serviceTokenProvider;
-
-  private RestTemplate restTemplate = new RestTemplate();
+  public OrderViewProjector(OrderViewRepository orderViewRepository, ProdukClient produkClient,
+      PelangganClient pelangganClient) {
+    this.orderViewRepository = orderViewRepository;
+    this.produkClient = produkClient;
+    this.pelangganClient = pelangganClient;
+  }
 
   @Transactional("readTransactionManager")
   public void sync(OrderMessage orderMessage) {
-    OrderView orderView = orderViewRepository.findById(orderMessage.getId()).orElse(new OrderView());
+    if (orderMessage == null || orderMessage.getId() == null) {
+      throw new IllegalArgumentException("Order event must contain an order id");
+    }
+
+    String eventType = orderMessage.getEventType() == null
+        ? OrderMessage.ORDER_CREATED
+        : orderMessage.getEventType();
+    if (OrderMessage.ORDER_DELETED.equals(eventType)) {
+      orderViewRepository.deleteById(orderMessage.getId());
+      System.out.println("Read DB removed for order id: " + orderMessage.getId());
+      return;
+    }
+    if (!OrderMessage.ORDER_CREATED.equals(eventType)
+        && !OrderMessage.ORDER_UPDATED.equals(eventType)) {
+      throw new IllegalArgumentException("Unsupported order event type");
+    }
+
+    OrderView orderView = orderViewRepository.findById(orderMessage.getId()).orElseGet(OrderView::new);
     orderView.setId(orderMessage.getId());
     orderView.setProdukId(orderMessage.getProdukId());
     orderView.setPelangganId(orderMessage.getPelangganId());
@@ -41,42 +52,30 @@ public class OrderViewProjector {
     orderView.setTglTransaksi(orderMessage.getTglTransaksi());
     orderView.setJumlah(orderMessage.getJumlah());
     orderView.setTotal(orderMessage.getTotal());
-
-    Produk produk = getProdukById(orderMessage.getProdukId());
-    if (produk != null) {
-      orderView.setNamaProduk(produk.getNama());
-    }
-
-    Pelanggan pelanggan = getPelangganById(orderMessage.getPelangganId());
-    if (pelanggan != null) {
-      orderView.setNamaPelanggan(pelanggan.getNama());
-    }
+    orderView.setNamaProduk(resolveProductName(orderMessage));
+    orderView.setNamaPelanggan(resolveCustomerName(orderMessage));
 
     orderViewRepository.save(orderView);
-    System.out.println("Read DB synced for order id: " + orderView.getId());
+    System.out.println("Read DB synced for order event " + eventType + " id=" + orderView.getId());
   }
 
-  private Produk getProdukById(Long produkId) {
-    ServiceInstance serviceInstanceProduk = discoveryClient.getInstances("PRODUK").get(0);
-    return restTemplate.exchange(
-        serviceInstanceProduk.getUri() + "/api/produk/" + produkId,
-        HttpMethod.GET,
-        new HttpEntity<>(serviceHeaders()),
-        Produk.class).getBody();
+  private String resolveProductName(OrderMessage event) {
+    if (hasText(event.getProdukNama())) {
+      return event.getProdukNama();
+    }
+    Produk produk = produkClient.findById(event.getProdukId());
+    return produk == null ? null : produk.getNama();
   }
 
-  private Pelanggan getPelangganById(Long pelangganId) {
-    ServiceInstance serviceInstancePelanggan = discoveryClient.getInstances("PELANGGAN").get(0);
-    return restTemplate.exchange(
-        serviceInstancePelanggan.getUri() + "/api/pelanggan/" + pelangganId,
-        HttpMethod.GET,
-        new HttpEntity<>(serviceHeaders()),
-        Pelanggan.class).getBody();
+  private String resolveCustomerName(OrderMessage event) {
+    if (hasText(event.getPelangganNama())) {
+      return event.getPelangganNama();
+    }
+    Pelanggan pelanggan = pelangganClient.findById(event.getPelangganId());
+    return pelanggan == null ? null : pelanggan.getNama();
   }
 
-  private HttpHeaders serviceHeaders() {
-    HttpHeaders headers = new HttpHeaders();
-    headers.setBearerAuth(serviceTokenProvider.createToken());
-    return headers;
+  private boolean hasText(String value) {
+    return value != null && !value.isBlank();
   }
 }
